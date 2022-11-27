@@ -21,7 +21,8 @@
 # SOFTWARE.
 
 from hx711 import hx711_pio_prog
-import rp2
+from util import util
+from rp2 import asm_pio, PIO, StateMachine
 
 class hx711_noblock(hx711_pio_prog):
 
@@ -29,12 +30,14 @@ class hx711_noblock(hx711_pio_prog):
     DEFAULT_GAIN: int = 0
     T3: int = 2
     T4: int = 2
-    FREQUENCY: int = 10000000
+    FREQUENCY: int = 10000000 #10MHz, 0.1us
 
-    def init(self, hx, prog):
+    def init(self, hx):
 
-        StateMachine.init(
-            prog,
+        hx._state_mach = util.get_sm_from_pio(hx._pio_offset, hx._sm_offset)
+
+        hx._state_mach = StateMachine.init(
+            self.program,
             freq=self.FREQUENCY,
             in_base=hx.data_pin,
             out_base=hx.clock_pin,
@@ -43,7 +46,7 @@ class hx711_noblock(hx711_pio_prog):
             sideset_base=hx.clock_pin
         )
 
-    @rp2.asm_pio(
+    @asm_pio(
         out_init=(PIO.IN_HIGH),
         set_init=(PIO.IN_HIGH),
         sideset_init=(PIO.IN_HIGH),

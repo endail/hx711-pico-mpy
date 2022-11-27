@@ -21,9 +21,10 @@
 # SOFTWARE.
 
 import time
-from machine import Pin
 import rp2
 import _thread
+from machine import Pin
+from util import util
 
 class hx711_rate:
     rate_10 = 0
@@ -39,7 +40,10 @@ class hx711_power:
     pwr_down = 1
 
 class hx711_pio_prog:
-    pass
+    def init():
+        pass
+    def program():
+        pass
 
 class hx711:
 
@@ -60,7 +64,8 @@ class hx711:
         self,
         clk: Pin,
         dat: Pin,
-        sm_offset: int,
+        pio_offset: int, # either 0 or 1
+        sm_offset: int, # 0 - 3
         prog: hx711_pio_prog
     ):
 
@@ -69,30 +74,29 @@ class hx711:
 
         self.clock_pin = clk
         self.data_pin = dat
-
-        # make sure pins are in proper modes
         self.clock_pin.init(mode=Pin.OUT)
         self.data_pin.init(mode=Pin.IN)
 
-        #self._state_mach = rp2.StateMachine()
-        self._prog = prog
-        rp2.PIO.add_program(self._prog)
-        prog_init_func(self)
+        self._pio_offset = pio_offset
+        self._sm_offset = sm_offset
+        self._state_mach = None
+
+        prog.init(self)
 
         self._mut.release()
-
 
     def close(self):
         self._mut.acquire()
         self._state_mach.active(0)
-        rp2.PIO.remove_program(self._prog)
+        rp2.PIO(self._pio_offset).remove_program(self._prog.program)
         self._mut.release()
 
     def set_gain(self, gain: hx711_gain):
         self._mut.acquire()
+        util.sm_drain_tx_fifo(self._state_mach)
         self._state_mach.put(gain)
         self._state_mach.get()
-        self._state_mach.get()
+        util.sm_get_blocking(self._state_mach)
         self._mut.release()
 
     @classmethod
@@ -117,13 +121,12 @@ class hx711:
 
     def get_value(self):
         self._mut.acquire()
-        rawVal = self._state_mach.get()
+        rawVal = util.sm_get_blocking(self._state_mach)
         self._mut.release()
         return self.get_twos_comp(rawVal)
 
     def get_value_timeout(self, timeout: int):
 
-        success = False
         endTime = time.ticks_us() + timeout
         val = None
 
@@ -136,17 +139,24 @@ class hx711:
 
         self._mut.release()
 
-        return self.get_twos_comp(val) if val != None else None
+        if val != None:
+            return self.get_twos_comp(val)
 
+        return None
 
     def get_value_noblock(self):
+
         self._mut.acquire()
         val = self.__try_get_value()
         self._mut.release()
-        return self.get_twos_comp(val) if val != None else None
+        
+        if val != None:
+            return self.get_twos_comp(val)
+
+        return None
 
     def set_power(self, pwr: hx711_power):
-        
+
         self._mut.acquire()
 
         if pwr == hx711_power.pwr_up:
@@ -169,6 +179,6 @@ class hx711:
         time.sleep_us(cls.POWER_DOWN_TIMEOUT)
 
     def __try_get_value(self):
-        if self._state_mach.rx_fifo() >= 3:
+        if self._state_mach.rx_fifo() >= self.READ_BITS / 8:
             return self._state_mach.get()
         return None
