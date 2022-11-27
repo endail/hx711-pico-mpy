@@ -1,4 +1,4 @@
-# hx711-pico-py
+# hx711-pico-mpy
 
 EXPERIMENTAL
 
