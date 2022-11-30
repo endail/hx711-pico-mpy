@@ -20,11 +20,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+import _thread
 import time
 import rp2
-import _thread
 from machine import Pin
-from util import util
+from src.util import util
 
 class hx711_rate:
     rate_10 = 0
@@ -40,22 +40,81 @@ class hx711_power:
     pwr_down = 1
 
 class hx711_pio_prog:
-    def init():
+    def __init__(self) -> None:
         pass
+
+class hx711_noblock(hx711_pio_prog):
+
+    PUSH_BITS: int = 24
+    FREQUENCY: int = 10000000 # 10MHz, 0.1us
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def init(self, hx) -> None:
+        hx._sm = rp2.StateMachine(
+            hx._sm_index,
+            self.program,
+            freq=self.FREQUENCY,
+            in_base=hx.data_pin,
+            out_base=hx.clock_pin,
+            set_base=hx.clock_pin,
+            jmp_pin=None,
+            sideset_base=hx.clock_pin
+        )
+
+    @rp2.asm_pio(
+        out_init=rp2.PIO.IN_HIGH,
+        set_init=(rp2.PIO.IN_HIGH),
+        sideset_init=(rp2.PIO.IN_HIGH),
+        out_shiftdir=rp2.PIO.SHIFT_LEFT,
+        autopush=True,
+        autopull=False,
+        push_thresh=PUSH_BITS,
+        fifo_join=rp2.PIO.JOIN_NONE
+    )
     def program():
-        pass
+
+        set(x, 0) # default gain of 0
+
+        label("wrap_target")
+        wrap_target()
+
+        set(y, 23) # read bits, 0 based
+
+        wait(0, pin, 0)
+
+        label("bitloop")
+        set(pins, 0)
+        in_(pins, 1)
+
+        jmp(y_dec, "bitloop").side(0) [2 - 1] # T4
+
+        pull(noblock).side(1)
+
+        out(x, 2)
+
+        jmp(not_x, "wrap_target").side(0)
+
+        mov(y, x)
+
+        label("gainloop")
+        set(pins, 1) [2 - 1] # T3
+        jmp(y_dec, "gainloop").side(0) [2 - 1] # T4
+
+        wrap()
 
 class hx711:
 
     READ_BITS: int = 24
     MIN_VALUE: int = -0x800000
     MAX_VALUE: int = 0x7fffff
-    POWER_DOWN_TIMEOUT: int = 60 #us
-    SETTLING_TIMES: int = [
+    POWER_DOWN_TIMEOUT: int = 60 # us
+    SETTLING_TIMES: list[int] = [ # ms
         400,
         50
     ]
-    SAMPLES_RATES: int = [
+    SAMPLES_RATES: list[int] = [
         10,
         80
     ]
@@ -64,10 +123,15 @@ class hx711:
         self,
         clk: Pin,
         dat: Pin,
-        pio_offset: int, # either 0 or 1
-        sm_offset: int, # 0 - 3
-        prog: hx711_pio_prog
+        sm_index: int = 0,
+        prog: hx711_pio_prog = hx711_noblock()
     ):
+        '''
+        clk: clock pin
+        dat: data pin
+        sm_index: state machine index
+        prog: PIO program
+        '''
 
         self._mut = _thread.allocate_lock()
         self._mut.acquire()
@@ -77,55 +141,59 @@ class hx711:
         self.clock_pin.init(mode=Pin.OUT)
         self.data_pin.init(mode=Pin.IN)
 
-        self._pio_offset = pio_offset
-        self._sm_offset = sm_offset
-        self._state_mach = None
+        self._sm: rp2.StateMachine|None = None
+        self._sm_index: int = sm_index
+        self._prog: hx711_pio_prog = prog
 
         prog.init(self)
 
         self._mut.release()
 
-    def close(self):
+    def close(self) -> None:
         self._mut.acquire()
-        self._state_mach.active(0)
-        rp2.PIO(self._pio_offset).remove_program(self._prog.program)
+        self._sm.active(0)
+        util.get_pio_from_sm_index(hx._sm_index).remove_program(self._prog.program)
         self._mut.release()
 
-    def set_gain(self, gain: hx711_gain):
+    def set_gain(self, gain: int) -> None:
         self._mut.acquire()
-        util.sm_drain_tx_fifo(self._state_mach)
-        self._state_mach.put(gain)
-        self._state_mach.get()
-        util.sm_get_blocking(self._state_mach)
+        util.sm_drain_tx_fifo(self._sm)
+        self._sm.put(gain)
+        self._sm.get()
+        util.sm_get_blocking(self._sm)
         self._mut.release()
 
     @classmethod
-    def get_twos_comp(cls, raw: int):
+    def get_twos_comp(cls, raw: int) -> int:
         return -(raw & 0x800000) + (raw & 0x7fffff)
 
     @classmethod
-    def is_min_saturated(cls, val: int):
+    def is_min_saturated(cls, val: int) -> bool:
         return val == cls.MIN_VALUE
 
     @classmethod
-    def is_max_saturated(cls, val: int):
+    def is_max_saturated(cls, val: int) -> bool:
         return val == cls.MAX_VALUE
 
     @classmethod
-    def get_settling_time(cls, rate: hx711_rate):
+    def get_settling_time(cls, rate: int) -> int:
         return cls.SETTLING_TIMES[rate]
 
     @classmethod
-    def get_rate_sps(cls, rate: hx711_rate):
-        return cls.SAMPLE_RATES[rate]
+    def get_rate_sps(cls, rate: int) -> int:
+        return cls.SAMPLES_RATES[rate]
 
-    def get_value(self):
+    def get_value(self) -> int|None:
         self._mut.acquire()
-        rawVal = util.sm_get_blocking(self._state_mach)
+        rawVal = util.sm_get_blocking(self._sm)
         self._mut.release()
         return self.get_twos_comp(rawVal)
 
-    def get_value_timeout(self, timeout: int):
+    def get_value_timeout(self, timeout: int = 1000000) -> int|None:
+
+        '''
+        timeout: microseconds, 1 second by default
+        '''
 
         endTime = time.ticks_us() + timeout
         val = None
@@ -134,51 +202,41 @@ class hx711:
 
         while(time.ticks_us() < endTime):
             val = self.__try_get_value()
-            if val != None:
-                break
+            if val != None: break
 
         self._mut.release()
 
-        if val != None:
-            return self.get_twos_comp(val)
+        return self.get_twos_comp(val) if val else None
 
-        return None
-
-    def get_value_noblock(self):
-
+    def get_value_noblock(self) -> int|None:
         self._mut.acquire()
         val = self.__try_get_value()
         self._mut.release()
-        
-        if val != None:
-            return self.get_twos_comp(val)
+        return self.get_twos_comp(val) if val else None
 
-        return None
-
-    def set_power(self, pwr: hx711_power):
+    def set_power(self, pwr: int) -> None:
 
         self._mut.acquire()
 
         if pwr == hx711_power.pwr_up:
             self.clock_pin.value(0)
-            self._state_mach.restart()
-            self._state_mach.active(1)
+            self._sm.restart()
+            self._sm.active(1)
 
         elif pwr == hx711_power.pwr_down:
-            self._state_mach.active(0)
+            self._sm.active(0)
             self.clock_pin.value(1)
 
         self._mut.release()
 
     @classmethod
-    def wait_settle(cls, rate: hx711_rate):
+    def wait_settle(cls, rate: int) -> None:
         time.sleep_ms(cls.get_settling_time(rate))
 
     @classmethod
-    def wait_power_down(cls):
+    def wait_power_down(cls) -> None:
         time.sleep_us(cls.POWER_DOWN_TIMEOUT)
 
-    def __try_get_value(self):
-        if self._state_mach.rx_fifo() >= self.READ_BITS / 8:
-            return self._state_mach.get()
-        return None
+    def __try_get_value(self) -> int|None:
+        words = self.READ_BITS / 8
+        return self._sm.get() if self._sm.rx_fifo() >= words else None

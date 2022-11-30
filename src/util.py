@@ -20,39 +20,36 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from machine import mem32
 from rp2 import PIO, StateMachine
 
 class util:
 
     @classmethod
-    def get_sm_from_pio(cls, pio_offset: int, sm_offset: int):
-        '''
-        Takes the pio offset (either 0 or 1) and the sm offset
-        (0 - 3) and returns the correct StateMachine object
-        '''
-        return StateMachine((pio_offset << 2) + sm_offset)
+    def get_sm_from_pio(cls, pio: PIO, sm_index: int) -> StateMachine:
+        return pio.state_machine(sm_index)
 
     @classmethod
-    def get_pio_from_sm(cls, sm_offset: int):
+    def get_sm_index(cls, pio_offset: int, sm_offset: int) -> int:
+        return (pio_offset >> 2) + sm_offset
+
+    @classmethod
+    def get_pio_from_sm_index(cls, sm_index: int) -> PIO:
+        return PIO(sm_index >> 2)
+
+    @classmethod
+    def sm_drain_tx_fifo(cls, sm: StateMachine) -> None:
         '''
-        Takes the sm offset and returns the correct pio
+        to clear the fifo...
+        pull( ) noblock
+        https://github.com/raspberrypi/pico-sdk/blob/master/src/rp2_common/hardware_pio/pio.c#L252
         '''
-        return PIO(sm_offset >> 2)
+        while sm.tx_fifo() != 0: sm.exec("pull() noblock") # nts
 
     @classmethod
-    def sm_drain_tx_fifo(cls, sm):
-        while sm.tx_fifo() != 0:
-            sm.exec("pull 0 0")
+    def sm_get(cls, sm: StateMachine):
+        return sm.get() if sm.rx_fifo() != 0 else None
 
     @classmethod
-    def sm_get(cls, sm):
-        if sm.rx_fifo() != 0:
-            return sm.get()
-        return None
-
-    @classmethod
-    def sm_get_blocking(cls, sm):
-        while(sm.rx_fifo() == 0):
-            pass
+    def sm_get_blocking(cls, sm: StateMachine):
+        while sm.rx_fifo() == 0: pass
         return sm.get()

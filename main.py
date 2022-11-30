@@ -1,8 +1,3 @@
-# hx711-pico-mpy
-
-EXPERIMENTAL
-
-```python
 from machine import Pin
 from src.hx711 import *
 
@@ -36,5 +31,3 @@ if val := hx.get_value_timeout(250000):
 # or see if there's a value, but don't block if not
 if val := hx.get_value_noblock():
     print(val)
-
-```
