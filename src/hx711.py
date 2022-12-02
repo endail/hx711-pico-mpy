@@ -22,89 +22,128 @@
 
 import _thread
 import time
-import rp2
 from machine import Pin
-from src.util import util
-
-class hx711_rate:
-    rate_10 = 0
-    rate_80 = 1
-
-class hx711_gain:
-    gain_128 = 25
-    gain_32 = 26
-    gain_64 = 27
-
-class hx711_power:
-    pwr_up = 0
-    pwr_down = 1
-
-class hx711_pio_prog:
-    def __init__(self) -> None:
-        pass
-
-class hx711_noblock(hx711_pio_prog):
-
-    PUSH_BITS: int = 24
-    FREQUENCY: int = 10000000 # 10MHz, 0.1us
-
-    def __init__(self) -> None:
-        super().__init__()
-
-    def init(self, hx) -> None:
-        hx._sm = rp2.StateMachine(
-            hx._sm_index,
-            self.program,
-            freq=self.FREQUENCY,
-            in_base=hx.data_pin,
-            out_base=hx.clock_pin,
-            set_base=hx.clock_pin,
-            jmp_pin=None,
-            sideset_base=hx.clock_pin
-        )
-
-    @rp2.asm_pio(
-        out_init=rp2.PIO.IN_HIGH,
-        set_init=(rp2.PIO.IN_HIGH),
-        sideset_init=(rp2.PIO.IN_HIGH),
-        out_shiftdir=rp2.PIO.SHIFT_LEFT,
-        autopush=True,
-        autopull=False,
-        push_thresh=PUSH_BITS,
-        fifo_join=rp2.PIO.JOIN_NONE
-    )
-    def program():
-
-        set(x, 0) # default gain of 0
-
-        label("wrap_target")
-        wrap_target()
-
-        set(y, 23) # read bits, 0 based
-
-        wait(0, pin, 0)
-
-        label("bitloop")
-        set(pins, 0)
-        in_(pins, 1)
-
-        jmp(y_dec, "bitloop").side(0) [2 - 1] # T4
-
-        pull(noblock).side(1)
-
-        out(x, 2)
-
-        jmp(not_x, "wrap_target").side(0)
-
-        mov(y, x)
-
-        label("gainloop")
-        set(pins, 1) [2 - 1] # T3
-        jmp(y_dec, "gainloop").side(0) [2 - 1] # T4
-
-        wrap()
+from rp2 import PIO, StateMachine
 
 class hx711:
+
+    # ------- BEGIN INNER CLASSES ---------
+
+    class _util:
+
+        @classmethod
+        def get_sm_from_pio(cls, pio: PIO, sm_index: int) -> StateMachine:
+            return pio.state_machine(sm_index)
+
+        @classmethod
+        def get_sm_index(cls, pio_offset: int, sm_offset: int) -> int:
+            return (pio_offset >> 2) + sm_offset
+
+        @classmethod
+        def get_pio_from_sm_index(cls, sm_index: int) -> PIO:
+            return PIO(sm_index >> 2)
+
+        @classmethod
+        def sm_drain_tx_fifo(cls, sm: StateMachine) -> None:
+            '''
+            to clear the fifo...
+            pull( ) noblock
+            https://github.com/raspberrypi/pico-sdk/blob/master/src/rp2_common/hardware_pio/pio.c#L252
+            '''
+            while sm.tx_fifo() != 0: sm.exec("pull() noblock") # nts
+
+        @classmethod
+        def sm_get(cls, sm: StateMachine):
+            return sm.get() if sm.rx_fifo() != 0 else None
+
+        @classmethod
+        def sm_get_blocking(cls, sm: StateMachine):
+            while sm.rx_fifo() == 0: pass
+            return sm.get()
+
+    class rate:
+        rate_10 = 0
+        rate_80 = 1
+
+    class gain:
+        gain_128 = 25
+        gain_32 = 26
+        gain_64 = 27
+
+    class power:
+        pwr_up = 0
+        pwr_down = 1
+
+    class _pio_prog:
+        def __init__(self) -> None:
+            pass
+        def init(self, hx) -> None:
+            pass
+        def program(self) -> None:
+            pass
+
+    class pio_noblock(_pio_prog):
+
+        PUSH_BITS: int = 24
+        FREQUENCY: int = 10000000 # 10MHz, 0.1us
+
+        def __init__(self) -> None:
+            super().__init__()
+
+        def init(self, hx) -> None:
+            hx._sm = StateMachine(
+                hx._sm_index,
+                self.program,
+                freq=self.FREQUENCY,
+                in_base=hx.data_pin,
+                out_base=hx.clock_pin,
+                set_base=hx.clock_pin,
+                jmp_pin=None,
+                sideset_base=hx.clock_pin
+            )
+
+        @asm_pio(
+            out_init=PIO.IN_HIGH,
+            set_init=(PIO.IN_HIGH),
+            sideset_init=(PIO.IN_HIGH),
+            out_shiftdir=PIO.SHIFT_LEFT,
+            autopush=True,
+            autopull=False,
+            push_thresh=PUSH_BITS,
+            fifo_join=PIO.JOIN_NONE
+        )
+        def program():
+
+            set(x, 0) # default gain of 0
+
+            label("wrap_target")
+            wrap_target()
+
+            set(y, 23) # read bits, 0 based
+
+            wait(0, pin, 0)
+
+            label("bitloop")
+            set(pins, 0)
+            in_(pins, 1)
+
+            jmp(y_dec, "bitloop").side(0) [2 - 1] # T4
+
+            pull(noblock).side(1)
+
+            out(x, 2)
+
+            jmp(not_x, "wrap_target").side(0)
+
+            mov(y, x)
+
+            label("gainloop")
+            set(pins, 1) [2 - 1] # T3
+            jmp(y_dec, "gainloop").side(0) [2 - 1] # T4
+
+            wrap()
+
+    # ------- END INNER CLASSES ---------
 
     READ_BITS: int = 24
     MIN_VALUE: int = -0x800000
@@ -124,7 +163,7 @@ class hx711:
         clk: Pin,
         dat: Pin,
         sm_index: int = 0,
-        prog: hx711_pio_prog = hx711_noblock()
+        prog: _pio_prog = pio_noblock()
     ):
         '''
         clk: clock pin
@@ -136,14 +175,14 @@ class hx711:
         self._mut = _thread.allocate_lock()
         self._mut.acquire()
 
-        self.clock_pin = clk
-        self.data_pin = dat
+        self.clock_pin: Pin = clk
+        self.data_pin: Pin = dat
         self.clock_pin.init(mode=Pin.OUT)
         self.data_pin.init(mode=Pin.IN)
 
-        self._sm: rp2.StateMachine|None = None
+        self._sm: StateMachine
         self._sm_index: int = sm_index
-        self._prog: hx711_pio_prog = prog
+        self._prog: __class__._pio_prog = prog
 
         prog.init(self)
 
@@ -152,20 +191,20 @@ class hx711:
     def close(self) -> None:
         self._mut.acquire()
         self._sm.active(0)
-        util.get_pio_from_sm_index(hx._sm_index).remove_program(self._prog.program)
+        __class__._util.get_pio_from_sm_index(self._sm_index).remove_program(self._prog.program)
         self._mut.release()
 
     def set_gain(self, gain: int) -> None:
         self._mut.acquire()
-        util.sm_drain_tx_fifo(self._sm)
+        __class__._util.sm_drain_tx_fifo(self._sm)
         self._sm.put(gain)
         self._sm.get()
-        util.sm_get_blocking(self._sm)
+        __class__._util.sm_get_blocking(self._sm)
         self._mut.release()
 
     @classmethod
     def get_twos_comp(cls, raw: int) -> int:
-        return -(raw & 0x800000) + (raw & 0x7fffff)
+        return -(raw & +cls.MIN_VALUE) + (raw & cls.MAX_VALUE)
 
     @classmethod
     def is_min_saturated(cls, val: int) -> bool:
@@ -185,7 +224,7 @@ class hx711:
 
     def get_value(self) -> int|None:
         self._mut.acquire()
-        rawVal = util.sm_get_blocking(self._sm)
+        rawVal = __class__._util.sm_get_blocking(self._sm)
         self._mut.release()
         return self.get_twos_comp(rawVal)
 
@@ -201,7 +240,7 @@ class hx711:
         self._mut.acquire()
 
         while(time.ticks_us() < endTime):
-            val = self.__try_get_value()
+            val = self._try_get_value()
             if val != None: break
 
         self._mut.release()
@@ -210,7 +249,7 @@ class hx711:
 
     def get_value_noblock(self) -> int|None:
         self._mut.acquire()
-        val = self.__try_get_value()
+        val = self._try_get_value()
         self._mut.release()
         return self.get_twos_comp(val) if val else None
 
@@ -218,14 +257,14 @@ class hx711:
 
         self._mut.acquire()
 
-        if pwr == hx711_power.pwr_up:
-            self.clock_pin.value(0)
+        if pwr == __class__.power.pwr_up:
+            self.clock_pin.low()
             self._sm.restart()
             self._sm.active(1)
 
-        elif pwr == hx711_power.pwr_down:
+        elif pwr == __class__.power.pwr_down:
             self._sm.active(0)
-            self.clock_pin.value(1)
+            self.clock_pin.high()
 
         self._mut.release()
 
@@ -237,6 +276,6 @@ class hx711:
     def wait_power_down(cls) -> None:
         time.sleep_us(cls.POWER_DOWN_TIMEOUT)
 
-    def __try_get_value(self) -> int|None:
+    def _try_get_value(self) -> int|None:
         words = self.READ_BITS / 8
         return self._sm.get() if self._sm.rx_fifo() >= words else None
