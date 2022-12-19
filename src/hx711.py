@@ -188,6 +188,12 @@ class hx711:
 
         self._mut.release()
 
+    def __enter__(self):
+        return self
+        
+    def __exit__(self, ex_type, ex_val, ex_tb):
+        self.close()
+
     def close(self) -> None:
         self._mut.acquire()
         self._sm.active(0)
