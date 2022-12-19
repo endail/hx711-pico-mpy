@@ -6,7 +6,8 @@ EXPERIMENTAL
 from machine import Pin
 from src.hx711 import *
 
-# 1. initalise the hx711
+# 1. initalise the hx711 with pin 4 as clock pin, pin
+# 5 as data pin
 hx = hx711(Pin(4), Pin(5))
 
 # 2. power up
