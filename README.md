@@ -18,7 +18,7 @@ hx.set_power(hx711.power.pwr_up)
 hx.set_gain(hx711.gain.gain_128)
 hx.set_power(hx711.power.pwr_down)
 hx711.wait_power_down()
-hx.set_power(hx711_power.pwr_up)
+hx.set_power(hx711.power.pwr_up)
 
 # 4. wait for readings to settle
 hx711.wait_settle(hx711.rate.rate_10)
