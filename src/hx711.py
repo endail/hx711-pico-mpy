@@ -23,7 +23,7 @@
 import _thread
 import time
 from machine import Pin
-from rp2 import PIO, StateMachine
+from rp2 import PIO, StateMachine, asm_pio
 
 class hx711:
 
