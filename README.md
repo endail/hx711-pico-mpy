@@ -1,6 +1,6 @@
 # hx711-pico-mpy
 
-Micropython port of [https://github.com/endail/hx711-pico-c](hx711-pico-c).
+Micropython port of [hx711-pico-c](https://github.com/endail/hx711-pico-c).
 
 ```python
 from machine import Pin
