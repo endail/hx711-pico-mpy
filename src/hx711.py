@@ -29,37 +29,82 @@ from rp2 import PIO, StateMachine, asm_pio
 
 class hx711:
 
-    # ------- BEGIN INNER CLASSES ---------
-
     class _util:
 
         @classmethod
         def get_sm_from_pio(cls, pio: PIO, sm_index: int) -> StateMachine:
+            """Returns the StateMachine object from the given index
+
+            Args:
+                pio (PIO): RP2040 PIO instance
+                sm_index (int):
+
+            Returns:
+                StateMachine:
+            """
             return pio.state_machine(sm_index)
 
         @classmethod
         def get_sm_index(cls, pio_offset: int, sm_offset: int) -> int:
+            """Returns the global state machine index from given args
+
+            Args:
+                pio_offset (int): 0 or 1
+                sm_offset (int):
+
+            Returns:
+                int: index between 0 and 7
+            """
             return (pio_offset >> 2) + sm_offset
 
         @classmethod
         def get_pio_from_sm_index(cls, sm_index: int) -> PIO:
+            """Returns the correct PIO object from the global state machine index
+
+            Args:
+                sm_index (int):
+
+            Returns:
+                PIO:
+            """
             return PIO(sm_index >> 2)
 
         @classmethod
         def sm_drain_tx_fifo(cls, sm: StateMachine) -> None:
-            '''
-            to clear the fifo...
+            """Clears the StateMachine TX FIFO
+
+            Args:
+                sm (StateMachine):
+            
+            Performs:
             pull( ) noblock
             https://github.com/raspberrypi/pico-sdk/blob/master/src/rp2_common/hardware_pio/pio.c#L252
-            '''
-            while sm.tx_fifo() != 0: sm.exec("pull() noblock") # nts
+            This may not be thread safe
+            """
+            while sm.tx_fifo() != 0: sm.exec("pull() noblock")
 
         @classmethod
-        def sm_get(cls, sm: StateMachine):
+        def sm_get(cls, sm: StateMachine) -> int|None:
+            """Returns a value from the StateMachine's RX FIFO (NON-BLOCKING)
+
+            Args:
+                sm (StateMachine):
+
+            Returns:
+                int|None: None is returned if RX FIFO is empty
+            """
             return sm.get() if sm.rx_fifo() != 0 else None
 
         @classmethod
-        def sm_get_blocking(cls, sm: StateMachine):
+        def sm_get_blocking(cls, sm: StateMachine) -> int:
+            """Returns a value from the StateMachine's RX FIFO (BLOCKING)
+
+            Args:
+                sm (StateMachine):
+
+            Returns:
+                int:
+            """
             while sm.rx_fifo() == 0: pass
             return sm.get()
 
@@ -146,8 +191,6 @@ class hx711:
 
             wrap()
 
-    # ------- END INNER CLASSES ---------
-
     READ_BITS: int = 24
     MIN_VALUE: int = -0x800000
     MAX_VALUE: int = 0x7fffff
@@ -168,12 +211,14 @@ class hx711:
         sm_index: int = 0,
         prog: _pio_prog = pio_noblock()
     ):
-        '''
-        clk: clock pin
-        dat: data pin
-        sm_index: state machine index
-        prog: PIO program
-        '''
+        """Create HX711 object
+
+        Args:
+            clk (Pin): GPIO pin connected to HX711's clock pin
+            dat (Pin): GPIO pin connected to HX711's data pin
+            sm_index (int, optional): Global state machine index to use. Defaults to 0.
+            prog (_pio_prog, optional): PIO program. Defaults to built-in pio_noblock().
+        """
 
         self._mut = _thread.allocate_lock()
         self._mut.acquire()
@@ -195,15 +240,24 @@ class hx711:
         return self
         
     def __exit__(self, ex_type, ex_val, ex_tb):
+        # handle abrupt exits from locked contexts
+        if self._mut.locked(): self._mut.release()
         self.close()
 
     def close(self) -> None:
+        """Stop communication with HX711. Does not alter power state.
+        """
         self._mut.acquire()
         self._sm.active(0)
         __class__._util.get_pio_from_sm_index(self._sm_index).remove_program(self._prog.program)
         self._mut.release()
 
     def set_gain(self, gain: int) -> None:
+        """Change HX711 gain
+
+        Args:
+            gain (int):
+        """
         self._mut.acquire()
         __class__._util.sm_drain_tx_fifo(self._sm)
         self._sm.put(gain)
@@ -213,35 +267,84 @@ class hx711:
 
     @classmethod
     def get_twos_comp(cls, raw: int) -> int:
-        return -(raw & +cls.MIN_VALUE) + (raw & cls.MAX_VALUE)
+        """Returns the one's complement value from the raw HX711 value
+
+        Args:
+            raw (int): raw value from HX711
+
+        Returns:
+            int:
+        """
+        return -(raw & +__class__.MIN_VALUE) + (raw & __class__.MAX_VALUE)
 
     @classmethod
     def is_min_saturated(cls, val: int) -> bool:
+        """Whether value is at its maximum
+
+        Args:
+            val (int):
+
+        Returns:
+            bool:
+        """
         return val == cls.MIN_VALUE
 
     @classmethod
     def is_max_saturated(cls, val: int) -> bool:
+        """Whether value is at its maximum
+
+        Args:
+            val (int):
+
+        Returns:
+            bool:
+        """
         return val == cls.MAX_VALUE
 
     @classmethod
     def get_settling_time(cls, rate: int) -> int:
+        """Returns the appropriate settling time for the given rate
+
+        Args:
+            rate (int):
+
+        Returns:
+            int: milliseconds
+        """
         return cls.SETTLING_TIMES[rate]
 
     @classmethod
     def get_rate_sps(cls, rate: int) -> int:
+        """Returns the numeric value of the given rate
+
+        Args:
+            rate (int):
+
+        Returns:
+            int:
+        """
         return cls.SAMPLES_RATES[rate]
 
     def get_value(self) -> int|None:
+        """Blocks until a value is returned
+
+        Returns:
+            int:
+        """
         self._mut.acquire()
         rawVal = __class__._util.sm_get_blocking(self._sm)
         self._mut.release()
         return self.get_twos_comp(rawVal)
 
     def get_value_timeout(self, timeout: int = 1000000) -> int|None:
+        """Attempts to obtain a value within the timeout
 
-        '''
-        timeout: microseconds, 1 second by default
-        '''
+        Args:
+            timeout (int, optional): timeout in microseconds. Defaults to 1000000.
+
+        Returns:
+            int|None: None is returned if no value is obtained within the timeout period
+        """
 
         endTime = time.ticks_us() + timeout
         val = None
@@ -257,12 +360,22 @@ class hx711:
         return self.get_twos_comp(val) if val else None
 
     def get_value_noblock(self) -> int|None:
+        """Returns a value if one is available
+
+        Returns:
+            int|None: None is returned if no value is available
+        """
         self._mut.acquire()
         val = self._try_get_value()
         self._mut.release()
         return self.get_twos_comp(val) if val else None
 
     def set_power(self, pwr: int) -> None:
+        """Changes the power state of the HX711 and starts/stops the PIO program
+
+        Args:
+            pwr (int):
+        """
 
         self._mut.acquire()
 
@@ -279,12 +392,24 @@ class hx711:
 
     @classmethod
     def wait_settle(cls, rate: int) -> None:
+        """Waits for the appropriate amount of time for values to settle according to the given rate
+
+        Args:
+            rate (int):
+        """
         time.sleep_ms(cls.get_settling_time(rate))
 
     @classmethod
     def wait_power_down(cls) -> None:
+        """Waits for the appropriate amount of time for the HX711 to power down
+        """
         time.sleep_us(cls.POWER_DOWN_TIMEOUT)
 
     def _try_get_value(self) -> int|None:
-        words = self.READ_BITS / 8
+        """Attempts to obtain a value if one is available
+
+        Returns:
+            int|None: None is returned if no value is available
+        """
+        words = __class__.READ_BITS / 8
         return self._sm.get() if self._sm.rx_fifo() >= words else None

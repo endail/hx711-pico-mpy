@@ -1,14 +1,12 @@
 # hx711-pico-mpy
 
-EXPERIMENTAL
-
 ```python
 from machine import Pin
 from src.hx711 import *
 
-# 1. initalise the hx711 with pin 4 as clock pin, pin
-# 5 as data pin
-hx = hx711(Pin(4), Pin(5))
+# 1. initalise the hx711 with pin 14 as clock pin, pin
+# 15 as data pin
+hx = hx711(Pin(14), Pin(15))
 
 # 2. power up
 hx.set_power(hx711.power.pwr_up)
@@ -38,4 +36,17 @@ if val := hx.get_value_timeout(250000):
 if val := hx.get_value_noblock():
     print(val)
 
+# 6. stop communication with HX711
+hx.close()
+
+```
+
+## Alternatively, Use `with`
+
+```python
+with hx711(Pin(14), Pin(15)) as hx:
+    hx.set_power(hx711.power.pwr_up)
+    hx.set_gain(hx711.gain.gain_128)
+    hx711.wait_settle(hx711.rate.rate_10)
+    print(hx.get_value())
 ```
