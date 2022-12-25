@@ -235,11 +235,28 @@ class hx711:
 
         prog.init(self)
 
-        self._mut.release()
+        self._mut.release() 
+
+    def __str__(self) -> str:
+        """Gets a value as a string
+
+        Returns:
+            str:
+        """
+        return str(self.get_value())
+
+    def __bool__(self) -> bool:
+        return self._sm.active()
+
+    def __int__(self) -> None:
+        return self.get_value()
+
+    def __repr__(self) -> str:
+        return "[HX711 - CLK: {}, DAT: {}, SM_IDX: {}]".format(self.clock_pin, self.data_pin, self._sm_index)
 
     def __enter__(self):
         return self
-        
+
     def __exit__(self, ex_type, ex_val, ex_tb):
         # handle abrupt exits from locked contexts
         if self._mut.locked(): self._mut.release()
