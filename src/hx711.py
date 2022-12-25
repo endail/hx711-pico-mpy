@@ -131,6 +131,7 @@ class hx711:
 
     class pio_noblock(_pio_prog):
 
+        # see: https://github.com/endail/hx711-pico-c/blob/main/src/hx711_noblock.pio
         PUSH_BITS: int = 24
         FREQUENCY: int = 10000000 # 10MHz, 0.1us
 
