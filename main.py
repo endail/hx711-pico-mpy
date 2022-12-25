@@ -1,9 +1,9 @@
 from machine import Pin
 from src.hx711 import *
 
-# 1. initalise the hx711 with pin 4 as clock pin, pin
-# 5 as data pin
-hx = hx711(Pin(4), Pin(5))
+# 1. initalise the hx711 with pin 14 as clock pin, pin
+# 15 as data pin
+hx = hx711(Pin(14), Pin(15))
 
 # 2. power up
 hx.set_power(hx711.power.pwr_up)
