@@ -52,3 +52,6 @@ with hx711(Pin(14), Pin(15)) as hx:
     hx711.wait_settle(hx711.rate.rate_10)
     print(hx.get_value())
 ```
+
+
+[def]: https://github.com/endail/hx711-pico-c
