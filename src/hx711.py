@@ -1,3 +1,5 @@
+# type: ignore
+
 # MIT License
 # 
 # Copyright (c) 2022 Daniel Robertson
@@ -102,10 +104,11 @@ class hx711:
                 sideset_base=hx.clock_pin
             )
 
+        # pylint: disable=E,W,C,R
         @asm_pio(
-            out_init=PIO.IN_HIGH,
-            set_init=(PIO.IN_HIGH),
-            sideset_init=(PIO.IN_HIGH),
+            out_init=(PIO.OUT_LOW),
+            set_init=(PIO.OUT_LOW),
+            sideset_init=(PIO.OUT_LOW),
             out_shiftdir=PIO.SHIFT_LEFT,
             autopush=True,
             autopull=False,
@@ -124,10 +127,10 @@ class hx711:
             wait(0, pin, 0)
 
             label("bitloop")
-            set(pins, 0)
+            set(pins, 1)
             in_(pins, 1)
 
-            jmp(y_dec, "bitloop").side(0) [2 - 1] # T4
+            jmp(y_dec, "bitloop").side(0).delay(2 - 1) # T4
 
             pull(noblock).side(1)
 
@@ -138,8 +141,8 @@ class hx711:
             mov(y, x)
 
             label("gainloop")
-            set(pins, 1) [2 - 1] # T3
-            jmp(y_dec, "gainloop").side(0) [2 - 1] # T4
+            set(pins, 1).delay(2 - 1) # T3
+            jmp(y_dec, "gainloop").side(0).delay(2 - 1) # T4
 
             wrap()
 
