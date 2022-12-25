@@ -138,7 +138,7 @@ class hx711:
         def __init__(self) -> None:
             super().__init__()
 
-        def init(self, hx) -> None:
+        def init(self, hx: hx711) -> None:
             hx._sm = StateMachine(
                 hx._sm_index,
                 self.program,
