@@ -25,6 +25,7 @@
 import _thread
 import time
 from machine import Pin
+from micropython import const
 from rp2 import PIO, StateMachine, asm_pio
 
 class hx711:
@@ -109,17 +110,17 @@ class hx711:
             return sm.get()
 
     class rate:
-        rate_10 = 0
-        rate_80 = 1
+        rate_10: int = const(0)
+        rate_80: int = const(1)
 
     class gain:
-        gain_128 = 25
-        gain_32 = 26
-        gain_64 = 27
+        gain_128: int = const(25)
+        gain_32: int = const(26)
+        gain_64: int = const(27)
 
     class power:
-        pwr_up = 0
-        pwr_down = 1
+        pwr_up: int = const(0)
+        pwr_down: int = const(1)
 
     class _pio_prog:
         def __init__(self) -> None:
@@ -132,8 +133,8 @@ class hx711:
     class pio_noblock(_pio_prog):
 
         # see: https://github.com/endail/hx711-pico-c/blob/main/src/hx711_noblock.pio
-        PUSH_BITS: int = 24
-        FREQUENCY: int = 10000000 # 10MHz, 0.1us
+        PUSH_BITS: int = const(24)
+        FREQUENCY: int = const(10000000)
 
         def __init__(self) -> None:
             super().__init__()
@@ -192,17 +193,17 @@ class hx711:
 
             wrap()
 
-    READ_BITS: int = 24
-    MIN_VALUE: int = -0x800000
-    MAX_VALUE: int = 0x7fffff
-    POWER_DOWN_TIMEOUT: int = 60 # us
+    READ_BITS: int = const(24)
+    MIN_VALUE: int = const(-0x800000)
+    MAX_VALUE: int = const(0x7fffff)
+    POWER_DOWN_TIMEOUT: int = const(60) # us
     SETTLING_TIMES: list[int] = [ # ms
-        400,
-        50
+        const(400),
+        const(50)
     ]
     SAMPLES_RATES: list[int] = [
-        10,
-        80
+        const(10),
+        const(80)
     ]
 
     def __init__(
