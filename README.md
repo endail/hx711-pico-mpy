@@ -4,6 +4,8 @@ MicroPython port of [hx711-pico-c](https://github.com/endail/hx711-pico-c).
 
 Implemented as a [single Python file](https://raw.githubusercontent.com/endail/hx711-pico-mpy/main/src/hx711.py) which you can drop into your project.
 
+## Example
+
 ```python
 from machine import Pin
 from src.hx711 import *
