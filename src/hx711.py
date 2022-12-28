@@ -238,19 +238,8 @@ class hx711:
 
         self._mut.release() 
 
-    def __str__(self) -> str:
-        """Gets a value as a string
-
-        Returns:
-            str:
-        """
-        return str(self.get_value())
-
     def __bool__(self) -> bool:
         return self._sm.active()
-
-    def __int__(self) -> int|None:
-        return self.get_value()
 
     def __repr__(self) -> str:
         return "[HX711 - CLK: {}, DAT: {}, SM_IDX: {}]".format(self.clock_pin, self.data_pin, self._sm_index)
