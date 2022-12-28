@@ -249,7 +249,7 @@ class hx711:
     def __bool__(self) -> bool:
         return self._sm.active()
 
-    def __int__(self) -> None:
+    def __int__(self) -> int|None:
         return self.get_value()
 
     def __repr__(self) -> str:
@@ -258,7 +258,7 @@ class hx711:
     def __enter__(self):
         return self
 
-    def __exit__(self, ex_type, ex_val, ex_tb):
+    def __exit__(self, ex_type, ex_val, ex_tb) -> None:
         # handle abrupt exits from locked contexts
         if self._mut.locked(): self._mut.release()
         self.close()
@@ -294,7 +294,7 @@ class hx711:
         Returns:
             int:
         """
-        return -(raw & +__class__.MIN_VALUE) + (raw & __class__.MAX_VALUE)
+        return -(raw & +cls.MIN_VALUE) + (raw & cls.MAX_VALUE)
 
     @classmethod
     def is_min_saturated(cls, val: int) -> bool:
@@ -344,7 +344,7 @@ class hx711:
         """
         return cls.SAMPLES_RATES[rate]
 
-    def get_value(self) -> int|None:
+    def get_value(self) -> int:
         """Blocks until a value is returned
 
         Returns:
@@ -365,8 +365,8 @@ class hx711:
             int|None: None is returned if no value is obtained within the timeout period
         """
 
-        endTime = time.ticks_us() + timeout
-        val = None
+        endTime: int = time.ticks_us() + timeout
+        val: int|None = None
 
         self._mut.acquire()
 
@@ -402,7 +402,6 @@ class hx711:
             self.clock_pin.low()
             self._sm.restart()
             self._sm.active(1)
-
         elif pwr == __class__.power.pwr_down:
             self._sm.active(0)
             self.clock_pin.high()
