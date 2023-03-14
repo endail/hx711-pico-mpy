@@ -20,38 +20,93 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-cmake_minimum_required(VERSION 3.12)
+set(CMAKE_VERBOSE_MAKEFILE ON)
 
-add_compile_options(
-        -Wall
-        -Wextra
-        -Werror
-        -Wfatal-errors
-        -Wfloat-equal
-        -Wunreachable-code
-        -Wno-unused-function
-        -Wno-maybe-uninitialized
-        -Wno-ignored-qualifiers
-        -Wno-stringop-overflow          # rp2040_usb.c:61:3
-        -Wno-array-bounds               # rp2040_usb.c:61:3
+cmake_minimum_required(VERSION 3.14)
+
+set(CMAKE_C_STANDARD 11)
+
+find_package(Python3
+        COMPONENTS Interpreter
         )
 
-#add_executable(main
-#        ${CMAKE_CURRENT_LIST_DIR}/main.c
+#add_compile_options(
+#        -Wall
+#        -Wextra
+#        -Werror
+#        -Wfatal-errors
+#        -Wfloat-equal
+#        -Wunreachable-code
+#        -Wno-unused-function
+#        -Wno-maybe-uninitialized
+#        -Wno-ignored-qualifiers
+#        -Wno-stringop-overflow          # rp2040_usb.c:61:3
+#        -Wno-array-bounds               # rp2040_usb.c:61:3
 #        )
+
+include(pico_sdk_import.cmake)
+
+project(hx711-pico-mpy
+        VERSION 0.0.1
+        LANGUAGES C CXX ASM
+        )
+
+pico_sdk_init()
+
+if(PICO_SDK_VERSION_STRING VERSION_LESS "1.5.0")
+        message(FATAL_ERROR "hx711-pico-mpy requires Raspberry Pi Pico SDK version 1.5.0 (or later). Your version is ${PICO_SDK_VERSION_STRING}")
+endif()
 
 add_subdirectory(extern/hx711-pico-c)
 
-#target_link_libraries(main
-#        hx711-pico-c
-#        )
+add_library(${PROJECT_NAME} OBJECT
+        )
 
-#pico_enable_stdio_usb(main 1)
-#pico_enable_stdio_uart(main 1)
-#pico_add_extra_outputs(main)
+target_link_libraries(${PROJECT_NAME}
+        PUBLIC hx711-pico-c
+        )
 
-set(ARCH armv6m)
-set(MPY_DIR extern/micropython)
-set(MOD hx711_pico_mpy_$(ARCH))
-set(SRC src/module.c)
-include($(MPY_DIR)/py/dynruntime.mk)
+target_include_directories(${PROJECT_NAME}
+        INTERFACE ${CMAKE_CURRENT_LIST_DIR}/extern/hx711-pico-c
+        PRIVATE ${CMAKE_CURRENT_LIST_DIR}/extern/micropython
+        )
+
+target_sources(${PROJECT_NAME}
+        INTERFACE
+        ${CMAKE_CURRENT_LIST_DIR}/src/main.c
+        )
+
+add_custom_target(${PROJECT_NAME}_mpy_preprocessing
+        ALL
+        COMMAND Python3::Interpreter ${CMAKE_CURRENT_SOURCE_DIR}/extern/micropython/tools/mpy_ld.py -vvv --arch armv6m --preprocess -o ${CMAKE_CURRENT_BINARY_DIR}/hx711-pico-mpy.config.h ${CMAKE_CURRENT_LIST_DIR}/src/main.c
+        COMMENT "MicroPython linker preprocessing..."
+)
+
+target_compile_options(${PROJECT_NAME}
+        PUBLIC
+        -std=c99
+        -Os
+#        -Wall
+#        -Werror
+        -DNDEBUG
+        -DNO_QSTR
+        -DMICROPY_ENABLE_DYNRUNTIME
+        -DMP_CONFIGFILE="${CMAKE_CURRENT_BINARY_DIR}/hx711-pico-mpy.config.h"
+        -fpic
+        -fno-common
+        -U _FORTIFY_SOURCE
+        -mthumb
+        -mcpu=cortex-m0
+        -DHX711_NO_MUTEX
+        )
+
+add_dependencies(${PROJECT_NAME}
+        ${PROJECT_NAME}_mpy_preprocessing
+        )
+
+add_custom_target(${PROJECT_NAME}_mpy_linking
+        ALL
+        COMMAND Python3::Interpreter ${CMAKE_CURRENT_SOURCE_DIR}/extern/micropython/tools/mpy_ld.py -vvv --arch armv6m --qstrs ${CMAKE_CURRENT_BINARY_DIR}/hx711-pico-mpy.config.h -o ${CMAKE_CURRENT_BINARY_DIR}/hx711-pico-mpy.native.mpy $<TARGET_OBJECTS:hx711-pico-mpy>
+        COMMAND_EXPAND_LISTS
+        COMMENT "MicroPython linking..."
+)
