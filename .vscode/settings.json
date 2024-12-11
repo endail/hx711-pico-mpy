@@ -1,13 +1,18 @@
 {
-    "python.linting.enabled": true,
-    "python.analysis.typeshedPaths": [
-        ".vscode\\Pico-W-Stub"
-    ],
-    "python.languageServer": "Pylance",
+    "micropico.openOnStart": true,
     "python.analysis.typeCheckingMode": "basic",
-    "python.analysis.extraPaths": [
-        ".vscode\\Pico-W-Stub\\stubs"
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportMissingModuleSource": "none"
+    },
+    "python.analysis.typeshedPaths": [
+        "~/.micropico-stubs/included"
     ],
+    "python.analysis.extraPaths": [
+        "~/.micropico-stubs/included"
+    ],
+    "python.linting.enabled": true,
+    "python.languageServer": "Pylance",
+    "python.terminal.activateEnvironment": false,
+    "picowgo.openOnStart": true,
     "picowgo.syncFolder": "",
-    "picowgo.openOnStart": true
 }
