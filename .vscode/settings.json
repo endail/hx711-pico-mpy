@@ -7,9 +7,9 @@
     "python.terminal.activateEnvironment": false,
     "micropico.openOnStart": true,
     "python.analysis.typeshedPaths": [
-        "~/.micropico-stubs/included"
+        "~/.micropico-stubs/micropython-rp2-rpi_pico-stubs==1.23.0.post2"
     ],
     "python.analysis.extraPaths": [
-        "~/.micropico-stubs/included"
+        "~/.micropico-stubs/micropython-rp2-rpi_pico-stubs==1.23.0.post2"
     ]
 }

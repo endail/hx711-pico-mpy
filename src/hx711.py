@@ -24,90 +24,103 @@
 
 import _thread
 import time
-from machine import Pin
+from machine import Pin, I2C
 from micropython import const
 from rp2 import PIO, StateMachine, asm_pio
 
+class _util:
+
+    @classmethod
+    def set_bits8(value: int, startbit: int, len: int, bits: int) -> int:
+        mask: int = ((1 << len) - 1) << startbit
+        value &= ~mask
+        value |= (bits << startbit)
+        return value
+
+    @classmethod
+    def get_bits8(value: int, startbit: int, len: int):
+        mask: int = ((1 << len) - 1) << startbit
+        extracted: int = (value & mask) >> startbit
+        return extracted
+
+    @classmethod
+    def get_sm_from_pio(cls, pio: PIO, sm_index: int) -> StateMachine:
+        """Returns the StateMachine object from the given index
+
+        Args:
+            pio (PIO): RP2040 PIO instance
+            sm_index (int):
+
+        Returns:
+            StateMachine:
+        """
+        return pio.state_machine(sm_index)
+
+    @classmethod
+    def get_sm_index(cls, pio_offset: int, sm_offset: int) -> int:
+        """Returns the global state machine index from given args
+
+        Args:
+            pio_offset (int): 0 or 1
+            sm_offset (int):
+
+        Returns:
+            int: index between 0 and 7
+        """
+        return (pio_offset >> 2) + sm_offset
+
+    @classmethod
+    def get_pio_from_sm_index(cls, sm_index: int) -> PIO:
+        """Returns the correct PIO object from the global state machine index
+
+        Args:
+            sm_index (int):
+
+        Returns:
+            PIO:
+        """
+        return PIO(sm_index >> 2)
+
+    @classmethod
+    def sm_drain_tx_fifo(cls, sm: StateMachine) -> None:
+        """Clears the StateMachine TX FIFO
+
+        Args:
+            sm (StateMachine):
+        
+        Performs:
+        pull( ) noblock
+        https://github.com/raspberrypi/pico-sdk/blob/master/src/rp2_common/hardware_pio/pio.c#L252
+        This may not be thread safe
+        """
+        while sm.tx_fifo() != 0: sm.exec("pull() noblock")
+
+    @classmethod
+    def sm_get(cls, sm: StateMachine) -> int|None:
+        """Returns a value from the StateMachine's RX FIFO (NON-BLOCKING)
+
+        Args:
+            sm (StateMachine):
+
+        Returns:
+            int|None: None is returned if RX FIFO is empty
+        """
+        return sm.get() if sm.rx_fifo() != 0 else None
+
+    @classmethod
+    def sm_get_blocking(cls, sm: StateMachine) -> int:
+        """Returns a value from the StateMachine's RX FIFO (BLOCKING)
+
+        Args:
+            sm (StateMachine):
+
+        Returns:
+            int:
+        """
+        while sm.rx_fifo() == 0: pass
+        return sm.get()
+
 class hx711:
-
-    class _util:
-
-        @classmethod
-        def get_sm_from_pio(cls, pio: PIO, sm_index: int) -> StateMachine:
-            """Returns the StateMachine object from the given index
-
-            Args:
-                pio (PIO): RP2040 PIO instance
-                sm_index (int):
-
-            Returns:
-                StateMachine:
-            """
-            return pio.state_machine(sm_index)
-
-        @classmethod
-        def get_sm_index(cls, pio_offset: int, sm_offset: int) -> int:
-            """Returns the global state machine index from given args
-
-            Args:
-                pio_offset (int): 0 or 1
-                sm_offset (int):
-
-            Returns:
-                int: index between 0 and 7
-            """
-            return (pio_offset >> 2) + sm_offset
-
-        @classmethod
-        def get_pio_from_sm_index(cls, sm_index: int) -> PIO:
-            """Returns the correct PIO object from the global state machine index
-
-            Args:
-                sm_index (int):
-
-            Returns:
-                PIO:
-            """
-            return PIO(sm_index >> 2)
-
-        @classmethod
-        def sm_drain_tx_fifo(cls, sm: StateMachine) -> None:
-            """Clears the StateMachine TX FIFO
-
-            Args:
-                sm (StateMachine):
-            
-            Performs:
-            pull( ) noblock
-            https://github.com/raspberrypi/pico-sdk/blob/master/src/rp2_common/hardware_pio/pio.c#L252
-            This may not be thread safe
-            """
-            while sm.tx_fifo() != 0: sm.exec("pull() noblock")
-
-        @classmethod
-        def sm_get(cls, sm: StateMachine) -> int|None:
-            """Returns a value from the StateMachine's RX FIFO (NON-BLOCKING)
-
-            Args:
-                sm (StateMachine):
-
-            Returns:
-                int|None: None is returned if RX FIFO is empty
-            """
-            return sm.get() if sm.rx_fifo() != 0 else None
-
-        @classmethod
-        def sm_get_blocking(cls, sm: StateMachine) -> int:
-            """Returns a value from the StateMachine's RX FIFO (BLOCKING)
-
-            Args:
-                sm (StateMachine):
-
-            Returns:
-                int:
-            """
-            while sm.rx_fifo() == 0: pass
-            return sm.get()
 
     class rate:
         rate_10: int = const(0)
@@ -257,7 +270,7 @@ class hx711:
         """
         self._mut.acquire()
         self._sm.active(0)
-        __class__._util.get_pio_from_sm_index(self._sm_index).remove_program(self._prog.program)
+        _util.get_pio_from_sm_index(self._sm_index).remove_program(self._prog.program)
         self._mut.release()
 
     def set_gain(self, gain: int) -> None:
@@ -267,10 +280,10 @@ class hx711:
             gain (int):
         """
         self._mut.acquire()
-        __class__._util.sm_drain_tx_fifo(self._sm)
+        _util.sm_drain_tx_fifo(self._sm)
         self._sm.put(gain)
         self._sm.get()
-        __class__._util.sm_get_blocking(self._sm)
+        _util.sm_get_blocking(self._sm)
         self._mut.release()
 
     @classmethod
@@ -340,7 +353,7 @@ class hx711:
             int:
         """
         self._mut.acquire()
-        rawVal = __class__._util.sm_get_blocking(self._sm)
+        rawVal = _util.sm_get_blocking(self._sm)
         self._mut.release()
         return self.get_twos_comp(rawVal)
 
@@ -420,3 +433,317 @@ class hx711:
         """
         words = __class__.READ_BITS / 8
         return self._sm.get() if self._sm.rx_fifo() >= words else None
+
+class hx711_i2c:
+
+    @classmethod
+    def gain_to_i2c_gain(cls, g: int) -> int|None:
+        if g == hx711.gain.gain_128: return 0
+        elif g == hx711.gain.gain_32: return 1
+        elif g == hx711.gain.gain_64: return 2
+        return None
+    
+    @classmethod
+    def i2c_gain_to_gain(cls, ig: int) -> int|None:
+        if ig == 0: return hx711.gain.gain_128
+        elif ig == 1: return hx711.gain.gain_32
+        elif ig == 2: return hx711.gain.gain_64
+        return None
+
+    class control:
+        _METADATA_OFFSET_BYTES: int =    const(0)
+        _READY_STATE_OFFSET: int =       const(0)
+        _NEW_VALUE_STATE_OFFSET: int =   const(1)
+        _POWER_STATE_OFFSET: int =       const(2)
+        _GAIN_OFFSET: int =              const(3)
+        _RATE_OFFSET: int =              const(5)
+        _DATA_OFFSET: int =              const(8)
+        _DATA_OFFSET_BYTES: int =        const(1)
+
+        _READY_STATE_SIZE: int =         const(1)
+        _NEW_VALUE_STATE_SIZE: int =     const(1)
+        _POWER_STATE_SIZE: int =         const(1)
+        _GAIN_SIZE: int =                const(2)
+        _RATE_SIZE: int =                const(1)
+
+        _DATA_SIZE_BITS: int =           const(hx711.READ_BITS)
+        _DATA_SIZE_BYTES: int =          const(3)
+        _METADATA_SIZE_BITS: int =       const(6)
+        _METADATA_SIZE_BYTES: int =      const(1)
+        _TOTAL_BYTES: int =              const(4)
+
+        def __init__(self, metadata: int = 0) -> None:
+            self._bits = metadata
+
+        def __int__(self) -> int:
+            return self._bits
+        
+        def __bool__(self) -> bool:
+            return self.new_value_state and self.ready_state and self.power_state
+
+        @property
+        def ready_state(self) -> bool:
+            return bool(_util.get_bits8(
+                self._bits,
+                __class__._READY_STATE_OFFSET,
+                __class__._READY_STATE_SIZE))
+
+        @ready_state.setter
+        def ready_state(self, state: bool) -> None:
+            self._bits = _util.set_bits8(
+                self._bits,
+                __class__._READY_STATE_OFFSET,
+                __class__._READY_STATE_SIZE,
+                int(state))
+
+        @property
+        def new_value_state(self) -> bool:
+            return bool(_util.get_bits8(
+                self._bits,
+                __class__._READY_STATE_OFFSET,
+                __class__._READY_STATE_SIZE))
+
+        @new_value_state.setter
+        def new_value_state(self, state: bool) -> None:
+            self._bits = _util.set_bits8(
+                self._bits,
+                __class__._NEW_VALUE_STATE_OFFSET,
+                __class__._NEW_VALUE_STATE_SIZE,
+                int(state))
+
+        @property
+        def power_state(self) -> bool:
+            return bool(_util.get_bits8(
+                self._bits,
+                __class__._POWER_STATE_OFFSET,
+                __class__._POWER_STATE_SIZE))
+
+        @power_state.setter
+        def power_state(self, state: bool) -> None:
+            self._bits = _util.set_bits8(
+                self._bits,
+                __class__._POWER_STATE_OFFSET,
+                __class__._POWER_STATE_SIZE,
+                int(state))
+
+        @property
+        def gain(self) -> int:
+            i2c_gain: int = _util.get_bits8(
+                self._bits,
+                __class__._GAIN_OFFSET,
+                __class__._GAIN_SIZE)
+            return i2c_gain_to_gain(i2c_gain)
+
+        @gain.setter
+        def gain(self, g: int) -> None:
+            i2c_gain: int = gain_to_i2c_gain(g)
+            self._bits = _util.set_bits8(
+                self._bits,
+                __class__._GAIN_OFFSET,
+                __class__._GAIN_SIZE,
+                i2c_gain)
+
+        @property
+        def rate(self) -> int:
+            return _util.get_bits8(
+                self._bits,
+                __class__._RATE_OFFSET,
+                __class__._RATE_SIZE)
+
+        @rate.setter
+        def rate(self, r: int) -> None:
+            self._bits = _util.set_bits8(
+                self._bits,
+                __class__._RATE_OFFSET,
+                __class__._RATE_SIZE,
+                r)
+
+    class command:
+        _COMMAND_OFFSET: int =           const(0)
+        _POWER_STATE_OFFSET: int =       const(2)
+        _GAIN_OFFSET: int =              const(3)
+        _RATE_OFFSET: int =              const(5)
+
+        _COMMAND_SIZE: int =             const(2)
+        _POWER_STATE_SIZE: int =         const(1)
+        _GAIN_SIZE: int =                const(2)
+        _RATE_SIZE: int =                const(1)
+
+        none: int =                     const(0)
+        change_power_state: int =       const(1)
+        change_gain: int =              const(2)
+        get_value: int =                const(3)
+
+        def __init__(self, metadata: int = 0) -> None:
+            self._bits = metadata
+
+        def __int__(self) -> int:
+            return self._bits
+
+        @property
+        def cmd(self) -> command:
+            return _util.get_bits8(
+                self._bits,
+                __class__._COMMAND_OFFSET,
+                __class__._COMMAND_SIZE)
+
+        @cmd.setter
+        def cmd(self, c: int) -> None:
+            self._bits = _util.set_bits8(
+                self._bits,
+                __class__._COMMAND_OFFSET,
+                __class__._COMMAND_SIZE,
+                c)
+
+        @property
+        def power_state(self) -> bool:
+            return bool(_util.get_bits8(
+                self._bits,
+                __class__._POWER_STATE_OFFSET,
+                __class__._POWER_STATE_SIZE))
+
+        @power_state.setter
+        def power_state(self, state: bool) -> None:
+            self._bits = _util.set_bits8(
+                self._bits,
+                __class__._POWER_STATE_OFFSET,
+                __class__._POWER_STATE_SIZE,
+                int(state))
+
+        @property
+        def gain(self) -> int:
+            i2c_gain: int = _util.get_bits8(
+                self._bits,
+                __class__._GAIN_OFFSET,
+                __class__._GAIN_SIZE)
+            return i2c_gain_to_gain(i2c_gain)
+
+        @gain.setter
+        def gain(self, g: int) -> None:
+            self._bits = _util.set_bits8(
+                self._bits,
+                __class__._GAIN_OFFSET,
+                __class__._GAIN_SIZE,
+                gain_to_i2c_gain(g))
+
+        @property
+        def rate(self) -> int:
+            return _util.get_bits8(
+                self._bits,
+                __class__._RATE_OFFSET,
+                __class__._RATE_SIZE)
+
+        @rate.setter
+        def rate(self, r: int) -> None:
+            self._bits = _util.set_bits8(
+                self._bits,
+                __class__._RATE_OFFSET,
+                __class__._RATE_SIZE,
+                r)
+
+    DEFAULT_SCL_PIN: Pin = Pin(5, mode=Pin.OUT, pull=Pin.PULL_UP, alt=Pin.ALT_I2C)
+    DEFAULT_SDA_PIN: Pin = Pin(4, mode=Pin.IN, pull=Pin.PULL_UP, alt=Pin.ALT_I2C)
+    DEFAULT_BAUD_RATE: int = const(100000)
+    DEFAULT_I2C_ADDR: int = const(0x64)
+    DEFAULT_I2C_INST: int = const(0)
+    DEFAULT_I2C_TIMEOUT: int = const(50000)
+
+    @classmethod
+    def _value_to_array(val: int) -> bytearray:
+        arr: bytearray = bytearray(hx711.READ_BITS / 8)
+        arr[0] = ((val >> 0) & 0xff)
+        arr[1] = ((val >> 8) & 0xff)
+        arr[2] = ((val >> 16) & 0xff)
+        return arr
+
+    @classmethod
+    def _array_to_value(arr: bytes) -> int:
+        return (arr[0] << 0) | (arr[1] << 8) | (arr[2] << 16)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def __init__(
+        self,
+        scl_pin: Pin = DEFAULT_SCL_PIN,
+        sda_pin: Pin = DEFAULT_SDA_PIN,
+        baud_rate: int = DEFAULT_BAUD_RATE,
+        addr: int = DEFAULT_I2C_ADDR,
+        inst: int = DEFAULT_I2C_INST,
+        i2c_timeout: int = DEFAULT_I2C_TIMEOUT
+    ) -> None:
+
+        self._scl_pin = scl_pin
+        self._sda_pin = sda_pin
+        self._baud_rate = baud_rate
+        self._addr = addr
+        self._i2c = inst
+        self._i2c_timeout = i2c_timeout
+
+        self._i2c = I2C(
+            id=self._i2c,
+            scl=self._scl_pin,
+            sda=self._sda_pin,
+            freq=self._baud_rate,
+            timeout=self._i2c_timeout)
+
+    def __repr__(self) -> str:
+        return f"{__class__.__name__}(scl:{self._scl_pin}, sda:{self._sda_pin}, baud:{self._baud_rate}, addr:{self._addr})"
+
+    def close(self) -> None:
+        self._i2c.deinit()
+
+    def set_gain(self, gain: int, rate: int) -> None:
+        cmd: __class__.command = __class__.command()
+        cmd.cmd = __class__.command.change_gain
+        cmd.gain = gain
+        cmd.rate = rate
+        self._i2c.writeto(
+            self._addr,
+            bytes(int(command)),
+            True)
+
+    def get_value(self) -> tuple[int, int, control]:
+
+        # 0: byte length (or error?)
+        # 1: value
+        # 2: control
+        ret: tuple[int, int, __class__.control] = (None, None, None)
+
+        inbuff: bytes = self._i2c.readfrom(
+            self._addr,
+            __class__.control._TOTAL_BYTES,
+            True)
+
+        ret[0] = len(inbuff)
+
+        if ret[0] != __class__.control._TOTAL_BYTES:
+            return ret
+
+        ret[1] = __class__._array_to_value(inbuff[1:])
+        ret[2] = __class__.control(inbuff[0])
+
+        return ret
+
+    def power_up(self, gain: int, rate: int) -> None:
+        cmd: __class__.command = __class__.command()
+        cmd.cmd = __class__.command.change_power_state
+        cmd.power_state = True
+        cmd.gain = gain
+        cmd.rate = rate
+        self._i2c.writeto(
+            self._addr,
+            bytes(int(command)),
+            True)
+
+    def power_down(self):
+        cmd: __class__.command = __class__.command()
+        cmd.cmd = __class__.command.change_power_state
+        cmd.power_state = False
+        self._i2c.writeto(
+            self._addr,
+            bytes(int(command)),
+            True)

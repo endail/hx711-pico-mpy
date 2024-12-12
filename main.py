@@ -32,3 +32,24 @@ if val := hx.get_value_timeout(250000):
 # or see if there's a value, but don't block if not
 if val := hx.get_value_noblock():
     print(val)
+
+
+
+#####
+
+hxi2c = hx711_i2c()
+
+hxi2c.power_up(hx711.gain.gain_128, hx711.rate.rate_80)
+hx711.wait_settle(hx711.rate.rate_80)
+
+err, val, ctrl = hxi2c.get_value()
+if ctrl: print(val)
+
+# or...
+ 
+with hx711_i2c() as hxi2c:
+    err, val, ctrl = hxi2c.get_value()
+    if ctrl: print(val)
+
+hxi2c.power_down()
+hxi2c.close()
