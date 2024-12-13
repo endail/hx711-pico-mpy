@@ -31,14 +31,14 @@ from rp2 import PIO, StateMachine, asm_pio
 class _util:
 
     @classmethod
-    def set_bits8(value: int, startbit: int, len: int, bits: int) -> int:
+    def set_bits8(cls, value: int, startbit: int, len: int, bits: int) -> int:
         mask: int = ((1 << len) - 1) << startbit
         value &= ~mask
         value |= (bits << startbit)
         return value
 
     @classmethod
-    def get_bits8(value: int, startbit: int, len: int):
+    def get_bits8(cls, value: int, startbit: int, len: int):
         mask: int = ((1 << len) - 1) << startbit
         extracted: int = (value & mask) >> startbit
         return extracted
@@ -616,7 +616,7 @@ class hx711_i2c:
                 self._bits,
                 __class__._GAIN_OFFSET,
                 __class__._GAIN_SIZE)
-            return i2c_gain_to_gain(i2c_gain)
+            return hx711_i2c.i2c_gain_to_gain(i2c_gain)
 
         @gain.setter
         def gain(self, g: int) -> None:
@@ -624,7 +624,7 @@ class hx711_i2c:
                 self._bits,
                 __class__._GAIN_OFFSET,
                 __class__._GAIN_SIZE,
-                gain_to_i2c_gain(g))
+                hx711_i2c.gain_to_i2c_gain(g))
 
         @property
         def rate(self) -> int:
@@ -649,7 +649,7 @@ class hx711_i2c:
     DEFAULT_I2C_TIMEOUT: int = const(50000)
 
     @classmethod
-    def _value_to_array(val: int) -> bytearray:
+    def _value_to_array(cls, val: int) -> bytearray:
         arr: bytearray = bytearray(hx711.READ_BITS / 8)
         arr[0] = ((val >> 0) & 0xff)
         arr[1] = ((val >> 8) & 0xff)
@@ -657,8 +657,13 @@ class hx711_i2c:
         return arr
 
     @classmethod
-    def _array_to_value(arr: bytes) -> int:
-        return (arr[0] << 0) | (arr[1] << 8) | (arr[2] << 16)
+    def _array_to_value(cls, arr: bytes) -> int:
+        val = (arr[0] << 0) | (arr[1] << 8) | (arr[2] << 16)
+        return hx711.get_twos_comp(val)
+        #int24 = (arr[2] << 16) | (arr[1] << 8) | (arr[0])
+        #if int24 & 0x800000:
+        #    int24 = int24 - (1 << 24)
+        #return int24
 
     def __enter__(self):
         return self
@@ -711,7 +716,7 @@ class hx711_i2c:
         # 0: byte length (or error?)
         # 1: value
         # 2: control
-        ret: tuple[int, int, __class__.control] = (None, None, None)
+        ret: list[int, int, __class__.control] = [None, None, None]
 
         inbuff: bytes = self._i2c.readfrom(
             self._addr,
@@ -721,12 +726,12 @@ class hx711_i2c:
         ret[0] = len(inbuff)
 
         if ret[0] != __class__.control._TOTAL_BYTES:
-            return ret
+            return tuple(ret)
 
         ret[1] = __class__._array_to_value(inbuff[1:])
         ret[2] = __class__.control(inbuff[0])
 
-        return ret
+        return tuple(ret)
 
     def power_up(self, gain: int, rate: int) -> None:
         cmd: __class__.command = __class__.command()
@@ -736,7 +741,7 @@ class hx711_i2c:
         cmd.rate = rate
         self._i2c.writeto(
             self._addr,
-            bytes(int(command)),
+            bytes(int(cmd)),
             True)
 
     def power_down(self):
