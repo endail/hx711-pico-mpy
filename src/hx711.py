@@ -500,8 +500,8 @@ class hx711_i2c:
         def new_value_state(self) -> bool:
             return bool(_util.get_bits8(
                 self._bits,
-                __class__._READY_STATE_OFFSET,
-                __class__._READY_STATE_SIZE))
+                __class__._NEW_VALUE_STATE_OFFSET,
+                __class__._NEW_VALUE_STATE_SIZE))
 
         @new_value_state.setter
         def new_value_state(self, state: bool) -> None:
@@ -658,12 +658,9 @@ class hx711_i2c:
 
     @classmethod
     def _array_to_value(cls, arr: bytes) -> int:
-        val = (arr[0] << 0) | (arr[1] << 8) | (arr[2] << 16)
+        assert(len(arr) == hx711.READ_BITS / 8)
+        val = int.from_bytes(arr, "little", False)
         return hx711.get_twos_comp(val)
-        #int24 = (arr[2] << 16) | (arr[1] << 8) | (arr[0])
-        #if int24 & 0x800000:
-        #    int24 = int24 - (1 << 24)
-        #return int24
 
     def __enter__(self):
         return self
