@@ -507,9 +507,22 @@ class hx711_i2c:
         _METADATA_SIZE_BYTES: int =      const(1)
         _TOTAL_BYTES: int =              const(4)
 
-        def __init__(self, metadata: int = 0) -> None:
-            assert(metadata >= 0 and metadata <= pow(2, __class__._METADATA_SIZE_BITS))
-            self._bits = metadata
+        def __init__(
+                self,
+                metadata: int = 0,
+                *,
+                ready_state: bool = None,
+                new_value_state: bool = None,
+                power_state: bool = None,
+                gain: int = None,
+                rate: int = None) -> None:
+                    assert(metadata >= 0 and metadata <= pow(2, __class__._METADATA_SIZE_BITS))
+                    self._bits = metadata
+                    if ready_state is not None: self.ready_state = ready_state
+                    if new_value_state is not None: self.new_value_state = new_value_state
+                    if power_state is not None: self.power_state = power_state
+                    if gain is not None: self.gain = gain
+                    if rate is not None: self.rate = rate
 
         def __int__(self) -> int:
             return self._bits
@@ -586,9 +599,20 @@ class hx711_i2c:
         change_gain: int =              const(2)
         get_value: int =                const(3)
 
-        def __init__(self, metadata: int = 0) -> None:
-            assert(metadata >= 0 and metadata <= pow(2, __class__._TOTAL_BITS_SIZE))
-            self._bits = metadata
+        def __init__(
+                self,
+                metadata: int = 0,
+                *,
+                cmd: int = None,
+                power_state: bool = None,
+                gain: int = None,
+                rate: int = None) -> None:
+                    assert(metadata >= 0 and metadata <= pow(2, __class__._TOTAL_BITS_SIZE))
+                    self._bits = metadata
+                    if cmd is not None: self.cmd = cmd
+                    if power_state is not None: self.power_state = power_state
+                    if gain is not None: self.gain = gain
+                    if rate is not None: self.rate = rate
 
         def __int__(self) -> int:
             return self._bits
@@ -654,7 +678,7 @@ class hx711_i2c:
 
     @classmethod
     def _array_to_value(cls, arr: bytes) -> int:
-        assert(len(arr) == hx711.READ_BITS / 8)
+        assert(len(arr) == (hx711.READ_BITS / 8))
         val = int.from_bytes(arr, "little", False)
         return hx711.get_twos_comp(val)
 
@@ -702,10 +726,10 @@ class hx711_i2c:
             gain (int):
             rate (int):
         """
-        cmd: __class__.command = __class__.command()
-        cmd.cmd = __class__.command.change_gain
-        cmd.gain = gain
-        cmd.rate = rate
+        cmd: __class__.command = __class__.command(
+            cmd=__class__.command.change_gain,
+            gain=gain,
+            rate=rate)
         self._i2c.writeto(self._addr, cmd.to_bytes(), True)
 
     def get_data(self) -> tuple[int, int, control]:
@@ -729,7 +753,12 @@ class hx711_i2c:
         if ret[0] != __class__.control._TOTAL_BYTES:
             return tuple(ret)
 
-        ret[1] = __class__._array_to_value(inbuff[__class__.control._DATA_OFFSET_BYTES:])
+        # extract exact number of value bytes
+        ret[1] = __class__._array_to_value(inbuff[
+            __class__.control._DATA_OFFSET_BYTES:
+            __class__.control._DATA_OFFSET_BYTES + __class__.control._DATA_SIZE_BYTES])
+
+        # get the control data
         ret[2] = __class__.control(inbuff[__class__.control._METADATA_OFFSET_BYTES])
 
         return tuple(ret)
@@ -753,19 +782,19 @@ class hx711_i2c:
             gain (int):
             rate (int):
         """
-        cmd: __class__.command = __class__.command()
-        cmd.cmd = __class__.command.change_power_state
-        cmd.power_state = True
-        cmd.gain = gain
-        cmd.rate = rate
+        cmd: __class__.command = __class__.command(
+            cmd=__class__.command.change_power_state,
+            power_state=True,
+            gain=gain,
+            rate=rate)
         self._i2c.writeto(self._addr, cmd.to_bytes(), True)
 
-    def power_down(self):
+    def power_down(self) -> None:
         """Power down the HX711 chip attached to the slave.
         hx711.wait_power_down() should be called before further
         interaction with the chip.
         """
-        cmd: __class__.command = __class__.command()
-        cmd.cmd = __class__.command.change_power_state
-        cmd.power_state = False
+        cmd: __class__.command = __class__.command(
+            cmd=__class__.command.change_power_state,
+            power_state=False)
         self._i2c.writeto(self._addr, cmd.to_bytes(), True)
