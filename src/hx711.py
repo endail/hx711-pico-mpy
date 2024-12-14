@@ -666,7 +666,7 @@ class hx711_i2c:
         cmd.rate = rate
         self._i2c.writeto(self._addr, cmd.to_bytes(), True)
 
-    def get_value(self) -> tuple[int, int, control]:
+    def get_data(self) -> tuple[int, int, control]:
 
         # 0: byte length (or error?)
         # 1: value
@@ -687,7 +687,7 @@ class hx711_i2c:
 
     def get_value_blocking(self) -> int:
         while True:
-            _, val, ctrl = self.get_value()
+            _, val, ctrl = self.get_data()
             if ctrl: return val
 
     def power_up(self, gain: int, rate: int) -> None:
