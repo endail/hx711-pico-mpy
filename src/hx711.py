@@ -32,6 +32,22 @@ class _util:
 
     @classmethod
     def set_bits8(cls, value: int, startbit: int, len: int, bits: int) -> int:
+        """Set bit in an unsigned 8 bit integer.
+
+        Args:
+            value (int): value to alter
+            startbit (int): first bit to change
+            len (int): number of bits to change
+            bits (int): new bits
+
+        Returns:
+            int: value after bits altered
+        """
+        assert(value >= 0 and value <= (pow(2, 8) - 1))
+        assert(startbit >= 0 and startbit <= 7)
+        assert(len >= 1 and len <= 8)
+        assert((startbit + len) <= 8)
+
         mask: int = ((1 << len) - 1) << startbit
         value &= ~mask
         value |= (bits << startbit)
@@ -39,8 +55,27 @@ class _util:
 
     @classmethod
     def get_bits8(cls, value: int, startbit: int, len: int):
+        """Extract bits from an unsigned 8 bit integer.
+
+        Args:
+            value (int): value to extract from
+            startbit (int): first (right-most) bit to extract from
+            len (int): number of bits to extract
+
+        Returns:
+            int: integer after bit shifting to right
+        """
+
+        assert(value >= 0 and value <= (pow(2, 8) - 1))
+        assert(startbit >= 0 and startbit <= 7)
+        assert(len >= 1 and len <= 8)
+        assert((startbit + len) <= 8)
+               
         mask: int = ((1 << len) - 1) << startbit
         extracted: int = (value & mask) >> startbit
+
+        assert(extracted >= 0 and extracted <= (pow(2, 8) - 1))
+
         return extracted
 
     @classmethod
@@ -489,7 +524,8 @@ class hx711_i2c:
             return bin(self._bits)
 
         def to_bytes(self) -> bytes:
-            return self._bits.to_bytes()
+            assert(self._bits >= 0 and self._bits <= pow(2, __class__._METADATA_SIZE_BITS))
+            return self._bits.to_bytes(__class__._METADATA_SIZE_BYTES)
 
         @property
         def ready_state(self) -> bool:
@@ -660,6 +696,12 @@ class hx711_i2c:
             self._i2c.deinit()
 
     def set_gain(self, gain: int, rate: int) -> None:
+        """Change HX711 gain
+
+        Args:
+            gain (int):
+            rate (int):
+        """
         cmd: __class__.command = __class__.command()
         cmd.cmd = __class__.command.change_gain
         cmd.gain = gain
@@ -667,6 +709,13 @@ class hx711_i2c:
         self._i2c.writeto(self._addr, cmd.to_bytes(), True)
 
     def get_data(self) -> tuple[int, int, control]:
+        """Get control and value data from I2C slave.
+
+        err, val, ctrl = hx.get_data()
+
+        Returns:
+            tuple[int, int, control]:
+        """
 
         # 0: byte length (or error?)
         # 1: value
@@ -686,11 +735,24 @@ class hx711_i2c:
         return tuple(ret)
 
     def get_value_blocking(self) -> int:
+        """Blocks until a new value is obtained.
+
+        Returns:
+            int:
+        """
         while True:
             _, val, ctrl = self.get_data()
             if ctrl: return val
 
     def power_up(self, gain: int, rate: int) -> None:
+        """Power up the HX711 attached to the slave and
+        set the gain and wait (on the slave) for the
+        correct settling time.
+
+        Args:
+            gain (int):
+            rate (int):
+        """
         cmd: __class__.command = __class__.command()
         cmd.cmd = __class__.command.change_power_state
         cmd.power_state = True
@@ -699,6 +761,10 @@ class hx711_i2c:
         self._i2c.writeto(self._addr, cmd.to_bytes(), True)
 
     def power_down(self):
+        """Power down the HX711 chip attached to the slave.
+        hx711.wait_power_down() should be called before further
+        interaction with the chip.
+        """
         cmd: __class__.command = __class__.command()
         cmd.cmd = __class__.command.change_power_state
         cmd.power_state = False
