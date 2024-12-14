@@ -685,6 +685,11 @@ class hx711_i2c:
 
         return tuple(ret)
 
+    def get_value_blocking(self) -> int:
+        while True:
+            _, val, ctrl = self.get_value()
+            if ctrl: return val
+
     def power_up(self, gain: int, rate: int) -> None:
         cmd: __class__.command = __class__.command()
         cmd.cmd = __class__.command.change_power_state
