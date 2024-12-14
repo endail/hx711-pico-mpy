@@ -2,7 +2,7 @@
 
 # MIT License
 # 
-# Copyright (c) 2022 Daniel Robertson
+# Copyright (c) 2024 Daniel Robertson
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -123,17 +123,17 @@ class _util:
 class hx711:
 
     class rate:
-        rate_10: int = const(0)
-        rate_80: int = const(1)
+        rate_10: int =              const(0)
+        rate_80: int =              const(1)
 
     class gain:
-        gain_128: int = const(25)
-        gain_32: int = const(26)
-        gain_64: int = const(27)
+        gain_128: int =             const(25)
+        gain_32: int =              const(26)
+        gain_64: int =              const(27)
 
     class power:
-        pwr_up: int = const(0)
-        pwr_down: int = const(1)
+        pwr_up: int =               const(0)
+        pwr_down: int =             const(1)
 
     class _pio_prog:
         def __init__(self) -> None:
@@ -146,8 +146,8 @@ class hx711:
     class pio_noblock(_pio_prog):
 
         # see: https://github.com/endail/hx711-pico-c/blob/main/src/hx711_noblock.pio
-        PUSH_BITS: int = const(24)
-        FREQUENCY: int = const(10000000)
+        PUSH_BITS: int =            const(24)
+        FREQUENCY: int =            const(10000000)
 
         def __init__(self) -> None:
             super().__init__()
@@ -206,10 +206,10 @@ class hx711:
 
             wrap()
 
-    READ_BITS: int = const(24)
-    MIN_VALUE: int = const(-0x800000)
-    MAX_VALUE: int = const(0x7fffff)
-    POWER_DOWN_TIMEOUT: int = const(60) # us
+    READ_BITS: int =                const(24)
+    MIN_VALUE: int =                const(-0x800000)
+    MAX_VALUE: int =                const(0x7fffff)
+    POWER_DOWN_TIMEOUT: int =       const(60) # us
     SETTLING_TIMES: list[int] = [ # ms
         const(400),
         const(50)
@@ -255,7 +255,7 @@ class hx711:
         return self._sm.active()
 
     def __repr__(self) -> str:
-        return "[HX711 - CLK: {}, DAT: {}, SM_IDX: {}]".format(self.clock_pin, self.data_pin, self._sm_index)
+        return f"{__class__.__name__}(clk: {self.clock_pin}, dat: {self.data_pin})"
 
     def __enter__(self):
         return self
@@ -437,18 +437,18 @@ class hx711:
 class hx711_i2c:
 
     @classmethod
-    def gain_to_i2c_gain(cls, g: int) -> int|None:
-        if g == hx711.gain.gain_128: return 0
-        elif g == hx711.gain.gain_32: return 1
-        elif g == hx711.gain.gain_64: return 2
-        return None
-    
+    def gain_to_i2c_gain(cls, g: int) -> int:
+        i2c_min: int = hx711.gain.gain_128 - hx711.READ_BITS - 1
+        i2c_max: int = hx711.gain.gain_64 - hx711.READ_BITS - 1
+        val: int = g - hx711.READ_BITS - 1
+        assert(val >= i2c_min and val <= i2c_max)
+        return val
+
     @classmethod
-    def i2c_gain_to_gain(cls, ig: int) -> int|None:
-        if ig == 0: return hx711.gain.gain_128
-        elif ig == 1: return hx711.gain.gain_32
-        elif ig == 2: return hx711.gain.gain_64
-        return None
+    def i2c_gain_to_gain(cls, ig: int) -> int:
+        val: int = ig + hx711.READ_BITS + 1
+        assert(val >= hx711.gain.gain_128 and val <= hx711.gain.gain_64)
+        return val
 
     class control:
         _METADATA_OFFSET_BYTES: int =    const(0)
@@ -473,101 +473,77 @@ class hx711_i2c:
         _TOTAL_BYTES: int =              const(4)
 
         def __init__(self, metadata: int = 0) -> None:
+            assert(metadata >= 0 and metadata <= pow(2, __class__._METADATA_SIZE_BITS))
             self._bits = metadata
 
         def __int__(self) -> int:
             return self._bits
-        
+
         def __bool__(self) -> bool:
             return self.new_value_state and self.ready_state and self.power_state
 
+        def __bytes__(self) -> bytes:
+            return self.to_bytes()
+
+        def __str__(self) -> str:
+            return bin(self._bits)
+
+        def to_bytes(self) -> bytes:
+            return self._bits.to_bytes()
+
         @property
         def ready_state(self) -> bool:
-            return bool(_util.get_bits8(
-                self._bits,
-                __class__._READY_STATE_OFFSET,
-                __class__._READY_STATE_SIZE))
+            return bool(_util.get_bits8(self._bits, __class__._READY_STATE_OFFSET, __class__._READY_STATE_SIZE))
 
         @ready_state.setter
         def ready_state(self, state: bool) -> None:
-            self._bits = _util.set_bits8(
-                self._bits,
-                __class__._READY_STATE_OFFSET,
-                __class__._READY_STATE_SIZE,
-                int(state))
+            self._bits = _util.set_bits8(self._bits, __class__._READY_STATE_OFFSET, __class__._READY_STATE_SIZE, int(state))
 
         @property
         def new_value_state(self) -> bool:
-            return bool(_util.get_bits8(
-                self._bits,
-                __class__._NEW_VALUE_STATE_OFFSET,
-                __class__._NEW_VALUE_STATE_SIZE))
+            return bool(_util.get_bits8(self._bits, __class__._NEW_VALUE_STATE_OFFSET, __class__._NEW_VALUE_STATE_SIZE))
 
         @new_value_state.setter
         def new_value_state(self, state: bool) -> None:
-            self._bits = _util.set_bits8(
-                self._bits,
-                __class__._NEW_VALUE_STATE_OFFSET,
-                __class__._NEW_VALUE_STATE_SIZE,
-                int(state))
+            self._bits = _util.set_bits8(self._bits, __class__._NEW_VALUE_STATE_OFFSET, __class__._NEW_VALUE_STATE_SIZE, int(state))
 
         @property
         def power_state(self) -> bool:
-            return bool(_util.get_bits8(
-                self._bits,
-                __class__._POWER_STATE_OFFSET,
-                __class__._POWER_STATE_SIZE))
+            return bool(_util.get_bits8(self._bits, __class__._POWER_STATE_OFFSET, __class__._POWER_STATE_SIZE))
 
         @power_state.setter
         def power_state(self, state: bool) -> None:
-            self._bits = _util.set_bits8(
-                self._bits,
-                __class__._POWER_STATE_OFFSET,
-                __class__._POWER_STATE_SIZE,
-                int(state))
+            self._bits = _util.set_bits8(self._bits, __class__._POWER_STATE_OFFSET, __class__._POWER_STATE_SIZE, int(state))
 
         @property
         def gain(self) -> int:
-            i2c_gain: int = _util.get_bits8(
-                self._bits,
-                __class__._GAIN_OFFSET,
-                __class__._GAIN_SIZE)
-            return i2c_gain_to_gain(i2c_gain)
+            i2c_gain: int = _util.get_bits8(self._bits, __class__._GAIN_OFFSET, __class__._GAIN_SIZE)
+            return hx711_i2c.i2c_gain_to_gain(i2c_gain)
 
         @gain.setter
         def gain(self, g: int) -> None:
-            i2c_gain: int = gain_to_i2c_gain(g)
-            self._bits = _util.set_bits8(
-                self._bits,
-                __class__._GAIN_OFFSET,
-                __class__._GAIN_SIZE,
-                i2c_gain)
+            i2c_gain: int = hx711_i2c.gain_to_i2c_gain(g)
+            self._bits = _util.set_bits8(self._bits, __class__._GAIN_OFFSET, __class__._GAIN_SIZE, i2c_gain)
 
         @property
         def rate(self) -> int:
-            return _util.get_bits8(
-                self._bits,
-                __class__._RATE_OFFSET,
-                __class__._RATE_SIZE)
+            return _util.get_bits8(self._bits, __class__._RATE_OFFSET, __class__._RATE_SIZE)
 
         @rate.setter
         def rate(self, r: int) -> None:
-            self._bits = _util.set_bits8(
-                self._bits,
-                __class__._RATE_OFFSET,
-                __class__._RATE_SIZE,
-                r)
+            self._bits = _util.set_bits8(self._bits, __class__._RATE_OFFSET, __class__._RATE_SIZE, r)
 
     class command:
-        _COMMAND_OFFSET: int =           const(0)
-        _POWER_STATE_OFFSET: int =       const(2)
-        _GAIN_OFFSET: int =              const(3)
-        _RATE_OFFSET: int =              const(5)
+        _COMMAND_OFFSET: int =          const(0)
+        _POWER_STATE_OFFSET: int =      const(2)
+        _GAIN_OFFSET: int =             const(3)
+        _RATE_OFFSET: int =             const(5)
 
-        _COMMAND_SIZE: int =             const(2)
-        _POWER_STATE_SIZE: int =         const(1)
-        _GAIN_SIZE: int =                const(2)
-        _RATE_SIZE: int =                const(1)
+        _COMMAND_SIZE: int =            const(2)
+        _POWER_STATE_SIZE: int =        const(1)
+        _GAIN_SIZE: int =               const(2)
+        _RATE_SIZE: int =               const(1)
+        _TOTAL_BITS_SIZE: int =         const(6)
 
         none: int =                     const(0)
         change_power_state: int =       const(1)
@@ -575,86 +551,70 @@ class hx711_i2c:
         get_value: int =                const(3)
 
         def __init__(self, metadata: int = 0) -> None:
+            assert(metadata >= 0 and metadata <= pow(2, __class__._TOTAL_BITS_SIZE))
             self._bits = metadata
 
         def __int__(self) -> int:
             return self._bits
 
+        def __bytes__(self) -> bytes:
+            return self.to_bytes()
+
+        def __str__(self) -> str:
+            return bin(self._bits)
+
+        def to_bytes(self) -> bytes:
+            return self._bits.to_bytes()
+
         @property
-        def cmd(self) -> command:
-            return _util.get_bits8(
-                self._bits,
-                __class__._COMMAND_OFFSET,
-                __class__._COMMAND_SIZE)
+        def cmd(self) -> int:
+            return _util.get_bits8(self._bits, __class__._COMMAND_OFFSET, __class__._COMMAND_SIZE)
 
         @cmd.setter
         def cmd(self, c: int) -> None:
-            self._bits = _util.set_bits8(
-                self._bits,
-                __class__._COMMAND_OFFSET,
-                __class__._COMMAND_SIZE,
-                c)
+            self._bits = _util.set_bits8(self._bits, __class__._COMMAND_OFFSET, __class__._COMMAND_SIZE, c)
 
         @property
         def power_state(self) -> bool:
-            return bool(_util.get_bits8(
-                self._bits,
-                __class__._POWER_STATE_OFFSET,
-                __class__._POWER_STATE_SIZE))
+            return bool(_util.get_bits8(self._bits, __class__._POWER_STATE_OFFSET, __class__._POWER_STATE_SIZE))
 
         @power_state.setter
         def power_state(self, state: bool) -> None:
-            self._bits = _util.set_bits8(
-                self._bits,
-                __class__._POWER_STATE_OFFSET,
-                __class__._POWER_STATE_SIZE,
-                int(state))
+            self._bits = _util.set_bits8(self._bits, __class__._POWER_STATE_OFFSET, __class__._POWER_STATE_SIZE, int(state))
 
         @property
         def gain(self) -> int:
-            i2c_gain: int = _util.get_bits8(
-                self._bits,
-                __class__._GAIN_OFFSET,
-                __class__._GAIN_SIZE)
+            i2c_gain: int = _util.get_bits8(self._bits, __class__._GAIN_OFFSET, __class__._GAIN_SIZE)
             return hx711_i2c.i2c_gain_to_gain(i2c_gain)
 
         @gain.setter
         def gain(self, g: int) -> None:
-            self._bits = _util.set_bits8(
-                self._bits,
-                __class__._GAIN_OFFSET,
-                __class__._GAIN_SIZE,
-                hx711_i2c.gain_to_i2c_gain(g))
+            self._bits = _util.set_bits8(self._bits, __class__._GAIN_OFFSET, __class__._GAIN_SIZE, hx711_i2c.gain_to_i2c_gain(g))
 
         @property
         def rate(self) -> int:
-            return _util.get_bits8(
-                self._bits,
-                __class__._RATE_OFFSET,
-                __class__._RATE_SIZE)
+            return _util.get_bits8(self._bits, __class__._RATE_OFFSET, __class__._RATE_SIZE)
 
         @rate.setter
         def rate(self, r: int) -> None:
-            self._bits = _util.set_bits8(
-                self._bits,
-                __class__._RATE_OFFSET,
-                __class__._RATE_SIZE,
-                r)
+            self._bits = _util.set_bits8(self._bits, __class__._RATE_OFFSET, __class__._RATE_SIZE, r)
 
-    DEFAULT_SCL_PIN: Pin = Pin(5, mode=Pin.OUT, pull=Pin.PULL_UP, alt=Pin.ALT_I2C)
-    DEFAULT_SDA_PIN: Pin = Pin(4, mode=Pin.IN, pull=Pin.PULL_UP, alt=Pin.ALT_I2C)
-    DEFAULT_BAUD_RATE: int = const(100000)
-    DEFAULT_I2C_ADDR: int = const(0x64)
-    DEFAULT_I2C_INST: int = const(0)
-    DEFAULT_I2C_TIMEOUT: int = const(50000)
+    DEFAULT_SCL_PIN: Pin =              Pin(5, mode=Pin.OUT, pull=Pin.PULL_UP, alt=Pin.ALT_I2C)
+    DEFAULT_SDA_PIN: Pin =              Pin(4, mode=Pin.IN, pull=Pin.PULL_UP, alt=Pin.ALT_I2C)
+    DEFAULT_BAUD_RATE: int =            const(100000)
+    DEFAULT_I2C_ADDR: int =             const(0x64)
+    DEFAULT_I2C_INST: int =             const(0)
+    DEFAULT_I2C_TIMEOUT: int =          const(50000)
 
     @classmethod
-    def _value_to_array(cls, val: int) -> bytearray:
-        arr: bytearray = bytearray(hx711.READ_BITS / 8)
-        arr[0] = ((val >> 0) & 0xff)
-        arr[1] = ((val >> 8) & 0xff)
-        arr[2] = ((val >> 16) & 0xff)
-        return arr
+    def _value_to_array(cls, val: int) -> bytes:
+        raise Exception("UNTESTED!")
+        return val.to_bytes(hx711.READ_BITS / 8, "little", False)
+        #arr: bytearray = bytearray(hx711.READ_BITS / 8)
+        #arr[0] = ((val >> 0) & 0xff)
+        #arr[1] = ((val >> 8) & 0xff)
+        #arr[2] = ((val >> 16) & 0xff)
+        #return arr
 
     @classmethod
     def _array_to_value(cls, arr: bytes) -> int:
@@ -678,12 +638,12 @@ class hx711_i2c:
         i2c_timeout: int = DEFAULT_I2C_TIMEOUT
     ) -> None:
 
-        self._scl_pin = scl_pin
-        self._sda_pin = sda_pin
-        self._baud_rate = baud_rate
-        self._addr = addr
-        self._i2c = inst
-        self._i2c_timeout = i2c_timeout
+        self._scl_pin: Pin = scl_pin
+        self._sda_pin: Pin = sda_pin
+        self._baud_rate: int = baud_rate
+        self._addr: int = addr
+        self._i2c: int = inst
+        self._i2c_timeout: int = i2c_timeout
 
         self._i2c = I2C(
             id=self._i2c,
@@ -696,17 +656,15 @@ class hx711_i2c:
         return f"{__class__.__name__}(scl:{self._scl_pin}, sda:{self._sda_pin}, baud:{self._baud_rate}, addr:{self._addr})"
 
     def close(self) -> None:
-        self._i2c.deinit()
+        if hasattr(self._i2c, "deinit"):
+            self._i2c.deinit()
 
     def set_gain(self, gain: int, rate: int) -> None:
         cmd: __class__.command = __class__.command()
         cmd.cmd = __class__.command.change_gain
         cmd.gain = gain
         cmd.rate = rate
-        self._i2c.writeto(
-            self._addr,
-            bytes(int(command)),
-            True)
+        self._i2c.writeto(self._addr, cmd.to_bytes(), True)
 
     def get_value(self) -> tuple[int, int, control]:
 
@@ -715,18 +673,15 @@ class hx711_i2c:
         # 2: control
         ret: list[int, int, __class__.control] = [None, None, None]
 
-        inbuff: bytes = self._i2c.readfrom(
-            self._addr,
-            __class__.control._TOTAL_BYTES,
-            True)
+        inbuff: bytes = self._i2c.readfrom(self._addr, __class__.control._TOTAL_BYTES, True)
 
         ret[0] = len(inbuff)
 
         if ret[0] != __class__.control._TOTAL_BYTES:
             return tuple(ret)
 
-        ret[1] = __class__._array_to_value(inbuff[1:])
-        ret[2] = __class__.control(inbuff[0])
+        ret[1] = __class__._array_to_value(inbuff[__class__.control._DATA_OFFSET_BYTES:])
+        ret[2] = __class__.control(inbuff[__class__.control._METADATA_OFFSET_BYTES])
 
         return tuple(ret)
 
@@ -736,16 +691,10 @@ class hx711_i2c:
         cmd.power_state = True
         cmd.gain = gain
         cmd.rate = rate
-        self._i2c.writeto(
-            self._addr,
-            bytes(int(cmd)),
-            True)
+        self._i2c.writeto(self._addr, cmd.to_bytes(), True)
 
     def power_down(self):
         cmd: __class__.command = __class__.command()
         cmd.cmd = __class__.command.change_power_state
         cmd.power_state = False
-        self._i2c.writeto(
-            self._addr,
-            bytes(int(command)),
-            True)
+        self._i2c.writeto(self._addr, cmd.to_bytes(), True)
